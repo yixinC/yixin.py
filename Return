@@ -1,0 +1,240 @@
+# -*- coding: utf-8 -*-
+"""
+Created on Wed Jan 23 16:06:57 2019
+
+@author: yixin
+
+def maxdrawdown
+def index_rank
+def maxdrawdown_perfect
+def makereturn
+def days
+
+"""
+import numpy as np
+from dateutil.parser import parse
+
+#############################函数分界线##############################################
+def maxdrawdown(timeseries):
+    # 回撤结束时间点
+    i = np.argmax(np.maximum.accumulate(timeseries) - timeseries)
+    # 回撤开始的时间点
+    j = np.argmax(timeseries[:i])
+    return (float(timeseries[i]) / timeseries[j]) - 1
+
+###############################函数分界线##########################################
+
+def index_rank(index,title):
+    '''
+    指标排序打分
+    index 为被打分的指标，title=False降序  True升序
+    '''
+    import numpy as np
+    
+    index[index==0]=np.nan
+    rank_num=index.rank(axis=0,ascending=title)   #指标列 进行排序，                     
+    return rank_num
+
+############################函数分界线##########################    
+
+def maxdrawdown_perfect(data,num):
+    '''
+    计算最大的 num 次回撤，传入的data 注意将index 改成数字，别用时间
+    '''
+    import numpy as np
+    import pandas as pd    
+    
+    A=np.zeros((3,num))
+    result=pd.DataFrame(A,index=['drawdown','time_begin','time_end'])
+
+    i = np.argmax(np.maximum.accumulate(data) - data)      # 回撤结束时间点
+    j = np.argmax(data[:i])                                # 回撤开始的时间点
+    result.iloc[:,0]=(float(data[i]) / data[j]) - 1,j,i
+    result[result==0]=np.nan
+    
+    
+    for x in np.arange(num-1):
+        
+        set_result=np.zeros((3,x+2))
+        set_result=pd.DataFrame(set_result)
+        
+        for x2 in np.arange(x+2):
+            if x2==0:
+                p1=0
+                p2=result.iloc[1,0]
+            elif x2==x+1:
+                p1=result.iloc[2,x2-1]
+                p2=np.size(data,0)-1
+            else:
+                p1=result.iloc[2,x2-1]
+                p2=result.iloc[1,x2]
+            
+            i_now=np.argmax(np.maximum.accumulate(data.iloc[int(p1):int(p2)]) - data.iloc[int(p1):int(p2)])    # 回撤结束时间点
+            j_now=np.argmax(data.iloc[int(p1):i_now])                                                                        # 回撤开始的时间点
+            drawdown=(float(data.iloc[i_now]) / data.iloc[j_now]) - 1
+            set_result.iloc[:,x2]=drawdown,j_now,i_now
+        
+        
+        
+        set_result=set_result.sort_values(set_result.index[0],axis=1,ascending=True)             #按index[0] 升序排序
+            
+        result.iloc[0,x+1]=set_result.iloc[0,0]
+        result.iloc[1,x+1]=set_result.iloc[1,0]
+        result.iloc[2,x+1]=set_result.iloc[2,0]
+        
+        result=result.sort_values(result.index[1],axis=1,ascending=True)             #升序排序
+        
+    result=result.sort_values(result.index[0],axis=1,ascending=True)
+    
+    return result
+
+################################函数分界线#######################################
+
+def makereturn(data):
+    
+                 #计算每周 月 季度 年 有多少天   
+    A=np.zeros((4,np.size(data,1)))
+    for i in np.arange(np.size(data,1)):
+        A[3,i]=parse(data.columns[i]).isocalendar()[1]
+        A[2,i]=parse(data.columns[i]).month
+        A[0,i]=parse(data.columns[i]).year
+    A[1]=(A[2]-1)//3+1
+    
+    
+    unique_week=np.unique(A[[0,3]],axis=1)
+    unique_month=np.unique(A[[0,2]],axis=1)
+    unique_quarter=np.unique(A[[0,1]],axis=1)
+    unique_year=np.unique(A[0])
+    
+    
+    unique_week=np.r_[unique_week,np.zeros((1,np.size(unique_week,1)))]     #添加一行零
+    unique_month=np.r_[unique_month,np.zeros((1,np.size(unique_month,1)))]
+    unique_quarter=np.r_[unique_quarter,np.zeros((1,np.size(unique_quarter,1)))]
+    unique_year=np.c_[unique_year,np.zeros((np.size(unique_year,0),1))]
+    unique_year=unique_year.T
+    
+    for x in np.arange(np.size(unique_week,1)):
+        index_week1=(A[0,:]==unique_week[0,x])                 #先判断年是否相等
+        index_week2=(A[3,:]==unique_week[1,x])                 #再判断周是否相等
+        index_week3=index_week1&index_week2
+        unique_week[2,x]=np.sum(index_week3)                   #计算多少个True
+        
+    for x in np.arange(np.size(unique_month,1)):
+        index_month1=(A[0,:]==unique_month[0,x])
+        index_month2=(A[2,:]==unique_month[1,x])
+        index_month3=index_month1&index_month2
+        unique_month[2,x]=np.sum(index_month3)
+        
+    for x in np.arange(np.size(unique_quarter,1)):    
+        index_quarter1=(A[0,:]==unique_quarter[0,x])
+        index_quarter2=(A[1,:]==unique_quarter[1,x])
+        index_quarter3=index_quarter1&index_quarter2
+        unique_quarter[2,x]=np.sum(index_quarter3)
+        
+    for x in np.arange(np.size(unique_year,1)):    
+        index_year1=(A[0,:]==unique_year[0,x])
+        unique_year[1,x]=np.sum(index_year1)  
+    
+    week_days=unique_week
+    month_days=unique_month
+    quarter_days=unique_quarter
+    year_days=unique_year
+############################计算 日 回报率###############   
+    
+    
+    R_day=data.T/data.T.shift(1)-1
+    R_day=R_day.T    
+
+    R_day=R_day+1
+    R_week=np.zeros((np.size(R_day,0),np.size(week_days,1)))
+    R_month=np.zeros((np.size(R_day,0),np.size(month_days,1)))
+    R_quarter=np.zeros((np.size(R_day,0),np.size(quarter_days,1)))
+    R_year=np.zeros((np.size(R_day,0),np.size(year_days,1)))
+    
+##########################开始计算周 月 季度 年度回报###################
+    for i in np.arange(np.size(week_days,1)):
+        m=np.sum(week_days[2,0:i])
+        n=np.sum(week_days[2,0:i+1])
+        m=m.astype(int); 
+        n=n.astype(int)
+        R_week[:,i]=np.prod(R_day.iloc[:,m:n],axis=1)
+    R_week=R_week-1
+    
+    for i in np.arange(np.size(month_days,1)):
+        m=np.sum(month_days[2,0:i])
+        n=np.sum(month_days[2,0:i+1])
+        m=m.astype(int); 
+        n=n.astype(int)
+        R_month[:,i]=np.prod(R_day.iloc[:,m:n],axis=1)
+    R_month=R_month-1
+    
+    for i in np.arange(np.size(quarter_days,1)):
+        m=np.sum(quarter_days[2,0:i])
+        n=np.sum(quarter_days[2,0:i+1])
+        m=m.astype(int); 
+        n=n.astype(int)
+        R_quarter[:,i]=np.prod(R_day.iloc[:,m:n],axis=1)
+    R_quarter=R_quarter-1
+
+    for i in np.arange(np.size(year_days,1)):
+        m=np.sum(year_days[1,0:i])
+        n=np.sum(year_days[1,0:i+1])
+        m=m.astype(int); 
+        n=n.astype(int)
+        R_year[:,i]=np.prod(R_day.iloc[:,m:n],axis=1)
+    R_year=R_year-1
+    
+    R_day=R_day-1
+    
+    return R_day,R_week,R_month,R_quarter,R_year
+
+
+##############################函数分界线#####################################
+#################################计算每周 月 季度 年 有多少天##########
+def days(data):
+    import numpy as np
+    from dateutil.parser import parse
+
+    A=np.zeros((4,np.size(data,1)))
+    for i in np.arange(np.size(data,1)):
+        A[3,i]=parse(data.columns[i]).isocalendar()[1]
+        A[2,i]=parse(data.columns[i]).month
+        A[0,i]=parse(data.columns[i]).year
+    A[1]=(A[2]-1)//3+1
+    
+    
+    unique_week=np.unique(A[[0,3]],axis=1)
+    unique_month=np.unique(A[[0,2]],axis=1)
+    unique_quarter=np.unique(A[[0,1]],axis=1)
+    unique_year=np.unique(A[0])
+    
+    
+    unique_week=np.r_[unique_week,np.zeros((1,np.size(unique_week,1)))]     #添加一行零
+    unique_month=np.r_[unique_month,np.zeros((1,np.size(unique_month,1)))]
+    unique_quarter=np.r_[unique_quarter,np.zeros((1,np.size(unique_quarter,1)))]
+    unique_year=np.c_[unique_year,np.zeros((np.size(unique_year,0),1))]
+    unique_year=unique_year.T
+    
+    for x in np.arange(np.size(unique_week,1)):
+        index_week1=(A[0,:]==unique_week[0,x])                 #先判断年是否相等
+        index_week2=(A[3,:]==unique_week[1,x])                 #再判断周是否相等
+        index_week3=index_week1&index_week2
+        unique_week[2,x]=np.sum(index_week3)                   #计算多少个True
+        
+    for x in np.arange(np.size(unique_month,1)):
+        index_month1=(A[0,:]==unique_month[0,x])
+        index_month2=(A[2,:]==unique_month[1,x])
+        index_month3=index_month1&index_month2
+        unique_month[2,x]=np.sum(index_month3)
+        
+    for x in np.arange(np.size(unique_quarter,1)):    
+        index_quarter1=(A[0,:]==unique_quarter[0,x])
+        index_quarter2=(A[1,:]==unique_quarter[1,x])
+        index_quarter3=index_quarter1&index_quarter2
+        unique_quarter[2,x]=np.sum(index_quarter3)
+        
+    for x in np.arange(np.size(unique_year,1)):    
+        index_year1=(A[0,:]==unique_year[0,x])
+        unique_year[1,x]=np.sum(index_year1)
+    
+    return unique_week,unique_month,unique_quarter,unique_year
