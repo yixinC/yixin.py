@@ -1,0 +1,129 @@
+# -*- coding: utf-8 -*-
+"""
+Created on Mon Feb 25 16:44:48 2019
+
+@author: yixin
+"""
+import numpy as np
+import pandas as pd
+import Return
+import statsmodels.api as sm
+
+buyvol_rate=pd.read_csv(r'C:\Users\yixin\Desktop\CYXPython\research\buyvol_rate.csv')
+ashare=pd.read_csv(r'C:\Users\yixin\Desktop\CYXPython\Transaction\mkt_cap_ashare_data.csv',header=None);
+mdf_buyvol=pd.read_csv(r'C:\Users\yixin\Desktop\CYXPython\research\mdf_buyvol.csv')
+close= pd.read_csv(r'C:\Users\yixin\Desktop\CYXPython\Transaction\close_adj_nan2_data.csv',header=None);
+time = pd.read_csv(r'C:\Users\yixin\Desktop\CYXPython\Transaction\time.csv');
+close.columns=time.time
+R_day,_,_,_,_=Return.makereturn(close)
+R_need=R_day.iloc[:,1218:]
+ashare_need=ashare.iloc[:,1218:]
+
+del R_day,ashare,time
+
+num=20
+num2=10
+#R_result=yixin.factor_single_perfect(ashare_need,buyvol_rate,R_need,5,1,'day',False)
+#R_result=np.zeros([num,np.size(R_need,1)])
+#
+#for i in np.arange(np.size(R_need,1)-1):    
+#    R_now=R_need.iloc[:,i+1]
+#    index1_now=ashare_need.iloc[:,i]
+#    index2_now=buyvol_rate.iloc[:,i]
+#    M=pd.concat([index1_now,index2_now,R_now],axis=1)         # pd.concat 拼接
+#    M.columns=['index1','index2','R_index']
+#    M=M[~M.iloc[:,0].isin([0])]                               #市值为0的行删除
+#    M=M[~M.iloc[:,1].isin([0])]
+#    M=M.dropna(axis=0,how='any')                              #删除 含有nan 的行
+#    if np.size(M,0)==0:
+#        continue
+#    M=M.sort_values(M.columns[1],ascending=False)             #按index2 降序排序        
+#    
+#    for x in np.arange(num):
+#        share=M.iloc[int(np.size(M,0)/num*x):int(np.size(M,0)/num*(x+1)),0]
+#        R=M.iloc[int(np.size(M,0)/num*x):int(np.size(M,0)/num*(x+1)),2]
+#        if num2==1:
+#            share=share/sum(share)
+#            R_result[x,i+1]=sum(R*share)
+#        else:
+#            R_result[x,i+1]=sum(R)/np.size(R)
+
+#%matplotlib qt5             
+#
+#mean=np.mean(R_result,1)
+#cumsum=np.cumsum(R_result,1)
+#cumprod=np.cumprod(R_result+1,1)
+#mean=pd.DataFrame(mean)
+#cumsum=pd.DataFrame(cumsum).T
+#cumprod=pd.DataFrame(cumprod).T
+#
+#mean.plot.bar()
+#cumsum.plot()
+#cumprod.plot()
+
+############################滑动平均##########################
+insert_now=np.zeros([1,np.size(mdf_buyvol,0)])
+insert_now[insert_now==0]=np.nan
+insert_now=pd.DataFrame(insert_now,index=['000022.SZ'])
+
+mdf_MA_std={}
+ma_list = [3,5,10,20]
+for ma in ma_list:
+     mdf_MA_std[str(ma)]= (pd.DataFrame(mdf_buyvol.rolling(ma).mean()).T)/mdf_buyvol.T        #计算滑动平均
+     mdf_MA_std[str(ma)]=pd.concat([mdf_MA_std[str(ma)].iloc[:18,:],insert_now,mdf_MA_std[str(ma)].iloc[18:,:]],axis=0)         # pd.concat 拼接
+     mdf_MA_std[str(ma)].index=np.arange(3546)
+#####################下面进行回归################
+coef=np.zeros([np.size(ma_list),np.size(mdf_buyvol,0)])
+for h in np.arange(np.size(mdf_buyvol,0)-ma_list[-1]) :
+    k=0
+    x=pd.DataFrame(np.zeros((3546,np.size(ma_list))))
+    for ma in ma_list:
+        k=k+1
+        x.iloc[:,k-1]=mdf_MA_std[str(ma)].iloc[:,int(h+ma_list[-1])]
+    y=pd.DataFrame(R_need.iloc[:,h+ma_list[-1]]) 
+    mix=pd.concat([y,x],axis=1)                           #拼接
+    mix = mix.replace([np.inf, -np.inf], np.nan)
+    mix=mix.dropna(axis=0,how='any')                      #删除 含有nan 的行 
+    if np.size(mix,0)==0:
+        continue         
+    y=mix.iloc[:,0]
+    x=mix.iloc[:,1:]
+    result=sm.OLS(y,x).fit()
+    coef[:,h+ma_list[-1]]=result.params.values
+#######################################################################
+index_need=np.zeros([np.size(R_need,0),np.size(R_need,1)])
+k=0
+for ma in ma_list:
+    k=k+1
+    index_need=index_need+mdf_MA_std[str(ma)]*coef[k-1]
+
+########################################################################     
+R_result=np.zeros([num2,np.size(R_need,1)-num])
+
+for i in np.arange(np.size(index_need,1)-num):
+    R_now=pd.DataFrame(R_need.iloc[:,i+num])
+    index_now=pd.DataFrame(index_need.iloc[:,i+num-1])
+    M=pd.concat([index_now,R_now],axis=1)         # pd.concat 拼接
+    M.columns=['index','R_index']
+    M=M.dropna(axis=0,how='any')                              #删除 含有nan 的行
+    
+    mm=M.sort_values(M.columns[0],ascending=False)             #按index2 降序排序        
+    if np.size(mm,0)==0:
+        continue   
+    for x in np.arange(num2):
+        R=mm.iloc[int(np.size(mm,0)/num2*x):int(np.size(mm,0)/num2*(x+1)),1]
+        R_result[x,i]=sum(R)/np.size(R)
+        
+%matplotlib qt5             
+
+mean=np.mean(R_result,1)
+cumsum=np.cumsum(R_result,1)
+cumprod=np.cumprod(R_result+1,1)
+mean=pd.DataFrame(mean)
+cumsum=pd.DataFrame(cumsum).T
+cumprod=pd.DataFrame(cumprod).T
+
+mean.plot.bar()
+cumsum.plot()
+cumprod.plot()
+
