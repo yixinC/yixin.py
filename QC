@@ -1,0 +1,394 @@
+# -*- coding: utf-8 -*-
+"""
+Created on Tue Jan 22 19:28:12 2019
+
+@author: yixin
+
+def makereturn
+def days
+def double_index_sort           80+  行左右
+def factor_single               135  行左右
+def factor_single_perfect       170+ 行左右 
+def factor_double_perfect       230  行左右
+def index_nuetral_industry      290+ 行左右
+def heding_alpha_beta           330+ 行左右
+def index_nuetral               360+ 行左右
+"""
+#from WindPy import *
+#w.start();
+
+#################################计算日度收益#########################
+def makereturn(data):
+    R=data.T/data.T.shift(1)-1
+    R=R.T
+    return R
+
+#################################计算每周 月 季度 年 有多少天##########
+def days(data):
+    import numpy as np
+    from dateutil.parser import parse
+
+
+
+    A=np.zeros((4,np.size(data,1)))
+    for i in np.arange(np.size(data,1)):
+        A[3,i]=parse(data.columns[i]).isocalendar()[1]
+        A[2,i]=parse(data.columns[i]).month
+        A[0,i]=parse(data.columns[i]).year
+    A[1]=(A[2]-1)//3+1
+    
+    
+    unique_week=np.unique(A[[0,3]],axis=1)
+    unique_month=np.unique(A[[0,2]],axis=1)
+    unique_quarter=np.unique(A[[0,1]],axis=1)
+    unique_year=np.unique(A[0])
+    
+    
+    unique_week=np.r_[unique_week,np.zeros((1,np.size(unique_week,1)))]     #添加一行零
+    unique_month=np.r_[unique_month,np.zeros((1,np.size(unique_month,1)))]
+    unique_quarter=np.r_[unique_quarter,np.zeros((1,np.size(unique_quarter,1)))]
+    unique_year=np.c_[unique_year,np.zeros((np.size(unique_year,0),1))]
+    unique_year=unique_year.T
+    
+    for x in np.arange(np.size(unique_week,1)):
+        index_week1=(A[0,:]==unique_week[0,x])                 #先判断年是否相等
+        index_week2=(A[3,:]==unique_week[1,x])                 #再判断周是否相等
+        index_week3=index_week1&index_week2
+        unique_week[2,x]=np.sum(index_week3)                   #计算多少个True
+        
+    for x in np.arange(np.size(unique_month,1)):
+        index_month1=(A[0,:]==unique_month[0,x])
+        index_month2=(A[2,:]==unique_month[1,x])
+        index_month3=index_month1&index_month2
+        unique_month[2,x]=np.sum(index_month3)
+        
+    for x in np.arange(np.size(unique_quarter,1)):    
+        index_quarter1=(A[0,:]==unique_quarter[0,x])
+        index_quarter2=(A[1,:]==unique_quarter[1,x])
+        index_quarter3=index_quarter1&index_quarter2
+        unique_quarter[2,x]=np.sum(index_quarter3)
+        
+    for x in np.arange(np.size(unique_year,1)):    
+        index_year1=(A[0,:]==unique_year[0,x])
+        unique_year[1,x]=np.sum(index_year1)
+    
+    return unique_week,unique_month,unique_quarter,unique_year
+
+#################函数分界线###################################################
+
+##################两个指标进行排序####################################################
+def double_index_sort(index1,index2,index3,num_index1,num_index2,num2):
+    '''
+    根据 index1 index2 分别分为num_index1 num_index2组, index3为传入的close 计算收益
+    num2=1 表示计算市值加权收益，否在计算等权重收益
+    '''
+    import numpy as np
+    import pandas as pd
+#    import matplotlib.pyplot as plt
+    import Return
+                        
+    
+#    num_index1=2                         #按index1 分2组
+#    num_index2=3                         #按index2 分3组
+#    num2=1                               #num2=1 市值加权收益  num2=2 等权重收益
+    
+    R_day,_,_,_,_=Return.makereturn(index3)    
+    
+#    pb_lf[pb_lf==0]=np.nan
+#    BP=1/pb_lf
+    
+#    index1=ashare
+#    index2=BP
+    
+    R_result=np.zeros((num_index1*num_index2,np.size(index1,1)))
+    #################按天滚动#######################
+    for i in np.arange(np.size(index1,1)-1):
+        R_now=R_day.iloc[:,i+1]
+        index1_now=index1.iloc[:,i]
+        index2_now=index2.iloc[:,i]
+        M=pd.concat([index1_now,index2_now,R_now],axis=1)         # pd.concat 拼接
+        M.columns=['index1','index2','index3']
+        M=M[~M.iloc[:,0].isin([0])]                               #市值为0的行删除
+        M=M.dropna(axis=0,how='any')                              #删除 含有nan 的行
+        M=M.sort_values(M.columns[0],ascending=False)             #按市值降序排序
+        
+        for x in np.arange(num_index1):
+            M2=M.iloc[int(np.size(M,0)/num_index1*x):int(np.size(M,0)/num_index1*(x+1)),:]
+            M2=M2.sort_values(M.columns[1],ascending=False)       #按BP 降序排序
+            
+            for x2 in np.arange(num_index2):
+                share=M2.iloc[int(np.size(M2,0)/num_index2*x2):int(np.size(M2,0)/num_index2*(x2+1)),0]
+                R=M2.iloc[int(np.size(M2,0)/num_index2*x2):int(np.size(M2,0)/num_index2*(x2+1)),2]
+                if num2==1:
+                    share=share/sum(share)
+                    R_result[num_index2*x+x2,i+1]=sum(R*share)
+                else:
+                    share.iloc[:]=1
+                    R_result[num_index2*x+x2,i+1]=sum(R)/sum(share)
+                    
+    return R_result
+
+#####################函数分界线###########################################33
+
+#################单个指标进行排序###################################################
+def factor_single(index1,index2,index3,num,num2):
+    '''
+    # 按index2 分num组, 一般情况 将index1 传入为 市值，后面计算收益时用
+    #    num2等于1 计算市值加权收益 否在计算 等权重收益
+    index3 为计算收益用的 收盘价之类的
+    ''' 
+    import numpy as np
+    import pandas as pd
+    import Return
+  
+    R_day,_,_,_,_=Return.makereturn(index3)    
+    R_index=R_day
+    
+    R_result=np.zeros((num,np.size(R_index,1)))
+    #################按天滚动#######################
+    for i in np.arange(np.size(R_index,1)-1):
+        R_now=R_index.iloc[:,i+1]
+        index1_now=index1.iloc[:,i]
+        index2_now=index2.iloc[:,i]
+        M=pd.concat([index1_now,index2_now,R_now],axis=1)         # pd.concat 拼接
+        M.columns=['index1','index2','R_index']
+        M=M[~M.iloc[:,0].isin([0])]                               #市值为0的行删除
+        M=M.dropna(axis=0,how='any')                              #删除 含有nan 的行
+        MM=M.sort_values(M.columns[1],ascending=False)             #按index2 降序排序        
+        
+        for x in np.arange(num):
+            share=MM.iloc[int(np.size(MM,0)/num*x):int(np.size(MM,0)/num*(x+1)),0]
+            R=MM.iloc[int(np.size(MM,0)/num*x):int(np.size(MM,0)/num*(x+1)),2]
+            if num2==1:
+                share=share/sum(share)
+                R_result[x,i+1]=sum(R*share)
+            else:
+                share.iloc[:]=1
+                R_result[x,i+1]=sum(R)/sum(share)
+    return R_result
+
+##########################函数分界线###################################
+    
+#######################一个指标进行分组#######################################
+def factor_single_perfect(index1,index2,index3,num,num2,time,rank_title):    
+    '''
+    根据num 分为几组， num2==1 计算市值加权收益，否则计算等权重收益
+    index1 为传入的市值，index2为传入的分组指标，index3 为传入的收盘价等
+    time='day week month quarter year' 选一个  rank_title=False 降序 True升序
+    ''' 
+    import Return
+    import numpy as np
+    import pandas as pd
+    
+    R_day,R_week,R_month,R_quarter,R_year=Return.makereturn(index3)  
+    unique_week,unique_month,unique_quarter,unique_year=Return.days(index3)
+    
+    if time=='day':
+        R_index=R_day
+        days_index=np.ones((np.size(index3,1),1))
+    elif time=='week':
+        R_index=pd.DataFrame(R_week)
+        days_index=unique_week[2]
+    elif time=='month':
+        R_index=pd.DataFrame(R_month)
+        days_index=unique_month[2]
+    elif time=='quarter':
+        R_index=pd.DataFrame(R_quarter)
+        days_index=unique_quarter[2]
+    else:
+        R_index=pd.DataFrame(R_year)
+        days_index=unique_year[1]
+    
+    R_result=np.zeros((num,np.size(R_index,1)))
+    ########################################
+    for i in np.arange(np.size(R_index,1)-1):
+        num_k=int(sum(days_index[0:i+1])-1)         #这里改了下24
+        R_now=R_index.iloc[:,i+1]
+        index1_now=index1.iloc[:,num_k]
+        index2_now=index2.iloc[:,num_k]
+        M=pd.concat([index1_now,index2_now,R_now],axis=1)         # pd.concat 拼接
+        M.columns=['index1','index2','R_index']
+        M=M[~M.iloc[:,0].isin([0])]                               #市值为0的行删除
+        M=M[~M.iloc[:,1].isin([0])]
+        M=M.dropna(axis=0,how='any')                              #删除 含有nan 的行
+        MM=M.sort_values(M.columns[1],ascending=rank_title)             #按index2 降序排序        
+        
+        for x in np.arange(num):
+            share=MM.iloc[int(np.size(MM,0)/num*x):int(np.size(MM,0)/num*(x+1)),0]
+            R=MM.iloc[int(np.size(MM,0)/num*x):int(np.size(MM,0)/num*(x+1)),2]
+            if num2==1:
+                share=share/sum(share)
+                R_result[x,i+1]=sum(R*share)
+            else:
+                R_result[x,i+1]=sum(R)/np.size(R)
+    return R_result  
+
+##############################函数分界线#########################################
+
+##############################用两个指标 进行分组###############################    
+def factor_double_perfect(index1,index2,index3,index4,num_index2,num_index3,num2,time):    
+    '''
+    根据num_index1 分为几组,然后根据num_index2分几组, num2==1 计算市值加权收益，否则计算等权重收益
+    index1 为传入的市值，index2和index3为传入的分组指标，index4 为传入的收盘价等
+    time='day week month quarter year' 选一个
+    ''' 
+    import Return
+    import numpy as np
+    import pandas as pd
+    
+    R_day,R_week,R_month,R_quarter,R_year=Return.makereturn(index4)  
+    unique_week,unique_month,unique_quarter,unique_year=Return.days(index4)
+    
+    if time=='day':
+        R_index=R_day
+        days_index=np.ones((np.size(index3,1),1))
+    elif time=='week':
+        R_index=pd.DataFrame(R_week)
+        days_index=unique_week[2]
+    elif time=='month':
+        R_index=pd.DataFrame(R_month)
+        days_index=unique_month[2]
+    elif time=='quarter':
+        R_index=pd.DataFrame(R_quarter)
+        days_index=unique_quarter[2]
+    else:
+        R_index=pd.DataFrame(R_year)
+        days_index=unique_year[1]
+    
+    R_result=np.zeros((num_index2*num_index3,np.size(R_index,1)))
+    #################按天滚动#######################
+    for i in np.arange(np.size(R_index,1)-1):
+        num_k=int(sum(days_index[0:i+1])-1)
+        R_now=R_index.iloc[:,i+1]
+        index1_now=index1.iloc[:,num_k]                           #index1 为市值，用于计算收益时用
+        index2_now=index2.iloc[:,num_k]
+        index3_now=index3.iloc[:,num_k]
+        M=pd.concat([index1_now,index2_now,index3_now,R_now],axis=1)         # pd.concat 拼接
+        M.columns=['index1','index2','index3','R_index']
+        M=M[~M.iloc[:,0].isin([0])]                               #市值为0的行删除
+        M=M.dropna(axis=0,how='any')                              #删除 含有nan 的行
+        M=M.sort_values(M.columns[1],ascending=False)             #按index2 降序排序  
+        
+        for x in np.arange(num_index2):
+            M2=M.iloc[int(np.size(M,0)/num_index2*x):int(np.size(M,0)/num_index2*(x+1)),:]
+            M2=M2.sort_values(M.columns[2],ascending=False)       #按index3 降序排序
+            
+            for x2 in np.arange(num_index3):
+                share=M2.iloc[int(np.size(M2,0)/num_index3*x2):int(np.size(M2,0)/num_index3*(x2+1)),0]
+                R=M2.iloc[int(np.size(M2,0)/num_index3*x2):int(np.size(M2,0)/num_index3*(x2+1)),3]
+                if num2==1:
+                    share=share/sum(share)
+                    R_result[num_index3*x+x2,i+1]=sum(R*share)
+                else:
+                    share.iloc[:]=1
+                    R_result[num_index3*x+x2,i+1]=sum(R)/sum(share)
+    
+    return R_result
+
+##################################函数分界线##############################
+    
+##################################指标 行业中性化#############################
+def index_nuetral_industry(index1,industry_dummy,ashare):  
+
+    import numpy as np
+    import pandas as pd    
+    import statsmodels.api as sm 
+#    from statsmodels.stats.outliers_influence import summary_table
+    
+#    reg = linear_model.LinearRegression()
+    neutral_result=np.zeros((np.size(index1,0),np.size(index1,1)))
+    neutral_result=pd.DataFrame(neutral_result)
+    x=np.size(index1,1)
+    
+    for i in np.arange(x):
+        y_x=pd.concat([ashare.iloc[:,i],index1.iloc[:,i],industry_dummy],axis=1)     #拼接
+        y_x=y_x.dropna(axis=0,how='any')                                             #删除 含有nan 的行
+        y_x=y_x[~y_x.iloc[:,0].isin([0])]                                 #市值为0的行删除
+        y_now=y_x.iloc[:,1]      
+        x_now=sm.add_constant(y_x.iloc[:,2:])
+        
+        result=sm.OLS(y_now,x_now).fit() 
+#        _, data, _ = summary_table(result, alpha=0.05) 
+#        residual=data[:,8]
+        residual=result.resid
+        coef=result.params.values
+        
+        neutral_index_now=residual+coef[0]
+        neutral_index_now=pd.DataFrame(neutral_index_now,index=y_x.index)
+        
+#        neutral_result.iloc[:,i]=neutral_result.iloc[:,i]+neutral_index_now
+        neutral_result.iloc[:,i]=neutral_index_now
+        
+    return neutral_result
+
+
+######################函数分界线##########################################
+    
+######################对冲 获取alpha beta########################################
+def heding_alpha_beta_day(R_factor,R_future,n):
+    
+    import numpy as np
+    import pandas as pd
+    import statsmodels.api as sm
+    
+    R_factor=pd.DataFrame(R_factor).T
+    
+    hedging_result=np.zeros((2,np.size(R_future,1)))
+    hedging_result=pd.DataFrame(hedging_result,columns=R_future.columns,index=['alpha','beta'])
+    hedging_result[hedging_result==0]=np.nan
+    
+    
+    mix=pd.concat([R_factor,R_future],axis=0)             #拼接
+    mix=mix.dropna(axis=1,how='any')                      #删除 含有nan 的列  
+#    R_factor_now=mix.iloc[0]
+#    R_future_now=mix.iloc[1]
+    
+    num=np.size(mix,1)
+    for t in np.arange(num-n):
+        y=mix.iloc[0,t:t+n]
+        x=mix.iloc[1,t:t+n]
+        result=sm.OLS(y,x).fit()
+        coef=result.params.values
+        hedging_result.loc['beta',mix.columns[t+n]]=coef
+#        hedging_result.loc['alpha',mix.columns[t+n]]=
+        
+    hedging_result.loc['alpha']=R_factor.values-hedging_result.loc['beta'].values*R_future.values
+    
+    return hedging_result
+
+##############################函数分界线#################################
+
+#############################指标中性化##################################
+def index_nuetral(index1,index2,ashare):  
+    '''
+    index1为被中性化的指标 index2可以industry_dummy  或者市值等指标
+    '''
+    import numpy as np
+    import pandas as pd    
+    import statsmodels.api as sm 
+#    from statsmodels.stats.outliers_influence import summary_table
+    
+#    reg = linear_model.LinearRegression()
+    neutral_result=np.zeros((np.size(index1,0),np.size(index1,1)))
+    neutral_result=pd.DataFrame(neutral_result)
+    
+    for i in np.arange(np.size(index1,1)):
+        y_x=pd.concat([ashare.iloc[:,i],index1.iloc[:,i],index2.iloc[:,i]],axis=1)     #拼接
+        y_x=y_x.dropna(axis=0,how='any')                                             #删除 含有nan 的行
+        y_x=y_x[~y_x.iloc[:,0].isin([0])]                                 #市值为0的行删除
+        y_now=y_x.iloc[:,1]      
+        x_now=sm.add_constant(y_x.iloc[:,2:])
+        
+        result=sm.OLS(y_now,x_now).fit() 
+#        _, data, _ = summary_table(result, alpha=0.05) 
+#        residual=data[:,8]
+        residual=result.resid
+        coef=result.params.values
+        
+        neutral_index_now=residual+coef[0]
+        neutral_index_now=pd.DataFrame(neutral_index_now,index=y_x.index)
+        
+#        neutral_result.iloc[:,i]=neutral_result.iloc[:,i]+neutral_index_now
+        neutral_result.iloc[:,i]=neutral_index_now
+        
+    return neutral_result
